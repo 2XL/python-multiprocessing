@@ -15,11 +15,14 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-
+import sys
+import re
 import py_ecc
 import random
 import multiprocessing
+from multiprocessing import Pool
 import logging
+import math
 
 
 def _run_tests():
@@ -129,6 +132,8 @@ def who_i_am(data):
     print "Hi! I'm {} and I'm processing {}!".format(multiprocessing.current_process().name, data)
 
 
+
+# this
 def test_pool_who_i_am(size):
     """
     This test shows the way of knowing which process is dealing with
@@ -146,7 +151,7 @@ def test_pool_who_i_am(size):
     p.terminate()
     p.join()
 
-
+# this
 def test_pool_who_i_am_uniform(size):
     """
     This test forces a uniform distribution of workload among processes.
@@ -185,25 +190,169 @@ def enable_debug():
     logger.setLevel(multiprocessing.SUBDEBUG)
 
 
-def map_reduce(distributionType, clusterSize, testRun):
-    print "This is map reduce!"
+def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
+    """
+    @distributionType: boolean kind of distribution
+    @clusterSize: int number of nodes
+    @testRun: int number of runs
+    @logData: list of log
+    @outputPath: string path to output folder
 
-    print "TODO"
+    """
+    print "This is map reduce! "
+
+    print distributionType
+    print clusterSize
+    print testRun
+    print outputPath
+
+    # multi... GIL (global interpreter lock)
+    # python multiprocessing module
+    # python Pool.provides map
+    #
+    # [IP      YEAR        MONTH       N#VISITS]
+    line = logData[0]
+    print str(line[0])+"\t"+ str(line[5])+ "\t"+str(line[4])+"\t"+"###";
+
+
+
+    # build a pool of @clusterSize
+    pool = Pool(processes=clusterSize)
+
+
+    # fragment the input log into @clusterSize chunks
+    logLines = len(logData)
+    logChunkSize = int(math.ceil(logLines / clusterSize))
+    print str(logLines) + " into chunks of size: " + str(logChunkSize)
+
+    list = [x for x in xrange(0, len(logData), logChunkSize)]
+    list[-1] = logLines
+    print list
+
+    logChunkList = lindexsplit(logData, list)
+
+    print len(logChunkList)
+    items = 0
+    for item in logChunkList:
+        items += len(item)
+        print len(item), item
+
+    print items
+
+    print "Finish!"
+
+
+"""
+Map
+"""
+def Map(L):
+    print "Map"
+    results = []
+    for w in L:
+        ## if x then y then z the add  or if y then reorder then z reorder
+        if w.istitle():
+            results.append(w,1)
+    return results
+
+"""
+Partition
+"""
+def Partition(L):
+    print "Partition"
+    tf = {}
+    for sublist in L:
+        for p in sublist:
+            # Append the tuple to the list in the map
+            try:
+                tf[p[0]].append(p)
+            except KeyError:
+                tf[p[0]] = [p]
+    return tf
+
+"""
+Combiner
+"""
+def Combiner(L):
+    print "Combiner"
+
+"""
+Reduce
+"""
+def Reduce(Mapping):
+    print "Reduce"
+    return Mapping[0], sum(pair[1] for pair in Mapping[1])
+
+
+"""
+Load the contents the file at the given path into a big string and return it as a list of lists
+"""
+def load(path):
+    print "load/"+path
+    file_rows = []
+    row = []
+    f = open(path, "r")
+    for line in f:
+        row = re.split(r'\t+', line.rstrip('\t'))
+        file_rows.append(row)
+    # add try catch handle error???
+    return file_rows
+
+
+"""
+Magic tuple sorting by ...
+"""
+def tuple_sort(a, b):
+    if a[1]<b[1]:
+        return 1
+    elif a[1] > b[1]:
+        return -1
+    else:
+        return cmp(a[0], b[0])
+
+
+
+
+"""
+Partition the loglist
+"""
+def lindexsplit(some_list, list):
+    # Checks to see if any extra arguments were passed. If so,
+    # prepend the 0th index and append the final index of the
+    # passed list. This saves from having to check for the beginning
+    # and end of args in the for-loop. Also, increment each value in
+    # args to get the desired behavior.
+
+    # For a little more brevity, here is the list comprehension of the following
+    # statements:
+    #    return [some_list[start:end] for start, end in zip(args, args[1:])]
+    my_list = []
+    for start, end in zip(list, list[1:]):
+        my_list.append(some_list[start:end])
+    return my_list
+
+
+
 
 
 
 if __name__ == "__main__":
+
+    if(len(sys.argv) != 1):
+        print "Program arguments...";
+        print sys.argv
+        sys.exit(1);
+
+
     print "main/start:"
-    """
-    test_pool(5)
-    test_pool2(10)
-    test_pool_failing_workers(5,2)
-    test_pool_who_i_am(5)
-    test_pool_who_i_am_uniform(5)
-    """
+
+    #load file
+
+    print "TODO"
+    logFile = load("file/logs_min.txt")
+
     numScenarios = 6;
     clusterSize = [4, 8, 16]  # nodes
-    testRunsRandom = 100  # nº of test iterations
+    testRunsRandom = 100  # num of test iterations
     # random distribution --> test_pool_who_i_am
     testRunsUniform = 100
     # uniform distribution --> test_pool_who_i_am_uniform
@@ -240,7 +389,8 @@ if __name__ == "__main__":
     # cpu time --> fast and furious ... RIP
     #
 
-    map_reduce()
+    map_reduce(False, clusterSize[0], testRunsRandom,logFile, "file/out/");
+
     print "main/end"
 
 
