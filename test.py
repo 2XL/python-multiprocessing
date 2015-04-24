@@ -132,7 +132,6 @@ def who_i_am(data):
     print "Hi! I'm {} and I'm processing {}!".format(multiprocessing.current_process().name, data)
 
 
-
 # this is random
 def test_pool_who_i_am(size):
     """
@@ -150,6 +149,7 @@ def test_pool_who_i_am(size):
     print ""
     p.terminate()
     p.join()
+
 
 # this is uniform
 def test_pool_who_i_am_uniform(size):
@@ -208,37 +208,42 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     #
     # [IP[0]      YEAR[5]        MONTH[4]       N#VISITS]
     line = logData[0]
-    print str(line[0])+"\t"+ str(line[5])+ "\t"+str(line[4])+"\t"+"###";
+    print str(line[0]) + "\t" + str(line[5]) + "\t" + str(line[4]) + "\t" + "###";
 
     # build a pool of @clusterSize
-    pool = Pool(processes=clusterSize)
+    pool = Pool(processes=clusterSize, )
 
     # Fragment the input log into @clusterSize chunks
     logLines = len(logData)
-    logChunkSize = int(math.ceil(logLines / clusterSize))
+    partitionLength = clusterSize;
+    logChunkSize = int(math.ceil(logLines / partitionLength))
     print str(logLines) + " into chunks of size: " + str(logChunkSize)
-    list = [x for x in xrange(0, len(logData), logChunkSize)]
-    list[-1] = logLines # fix the last offset
+    list = [x for x in xrange(0, len(logData) + 1, logChunkSize)]
+    list[-1] = logLines  # fix the last offset
     logChunkList = lindexsplit(logData, list)
 
     # Fetch map operations
-    map_visitor = pool.map(Map, logChunkList);
+    map_visitor = pool.map(Map, logChunkList)
+    print map_visitor
 
     # Organize the mapped output
-    combiner_visitor = Partition(map_visitor);
+    combiner_visitor = Partition(map_visitor)
+    print combiner_visitor
 
+    print combiner_visitor.items()
+    print len(combiner_visitor.items())
+    # parse items into sets of 4 ??? o ja ho fa automaticament?
     # Refector additional step
 
-    # Collapse
     visitor_frequency = pool.map(Reduce, combiner_visitor.items())
-
+    print visitor_frequency
     # Sort in some order
-    frequency_rank = visitor_frequency.sort(tuple_sort)
+    # frequency_rank = visitor_frequency.sort(tuple_sort)
 
 
     # Display TOP
-    for pair in frequency_rank[:5]:
-        print pair[0], ": ", pair[1]
+    #for pair in frequency_rank[:5]:
+    #    print pair[0], ": ", pair[1]
 
 
 
@@ -250,20 +255,30 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
 Map
 num visits x month group by month, unique IP
 1 map visit by ip, {num}
+print str(ip[0])+"\t"+ str(year[5])+ "\t"+str(month[4])+"\t"+"###";
 """
+
+
 def Map(L):
-    print "Map"
-    results = []
-    for w in L:
-        ## if x then y then z the add  or if y then reorder then z reorder
-        if w.istitle():
-            results.append(w,1)
+    print "Map:", multiprocessing.current_process().name, "\t",
+    print len(L)
+    results = {} # key value storage
+    for line in L:
+        try:
+            results[str(line[4])] += 1
+        except KeyError:
+            results[str(line[4])] = 1
+
+    # print line[4]
     return results
+
 
 """
 Partition
 3 merge and order by
 """
+
+
 def Partition(L):
     print "Partition"
     tf = {}
@@ -271,33 +286,41 @@ def Partition(L):
         for p in sublist:
             # Append the tuple to the list in the map
             try:
-                tf[p[0]].append(p)
+                tf[p].append(sublist[p])
             except KeyError:
-                tf[p[0]] = [p]
+                tf[p] = [sublist[p]]
     return tf
+
 
 """
 Combiner
 2 map visit by month, {ip}
 """
+
+
 def Combiner(L):
     print "Combiner"
+
 
 """
 Reduce
 num visits x month group by month, unique IP
 IP YEAR MONTH num
 """
+
+
 def Reduce(Mapping):
     print "Reduce"
-    return Mapping[0], sum(pair[1] for pair in Mapping[1])
+    return Mapping[0], sum(pair for pair in Mapping[1])
 
 
 """
 Load the contents the file at the given path into a big string and return it as a list of lists
 """
+
+
 def load(path):
-    print "load/"+path
+    print "load/" + path
     file_rows = []
     row = []
     f = open(path, "r")
@@ -311,8 +334,10 @@ def load(path):
 """
 Magic tuple sorting by ...
 """
+
+
 def tuple_sort(a, b):
-    if a[1]<b[1]:
+    if a[1] < b[1]:
         return 1
     elif a[1] > b[1]:
         return -1
@@ -320,11 +345,11 @@ def tuple_sort(a, b):
         return cmp(a[0], b[0])
 
 
-
-
 """
 Partition the loglist
 """
+
+
 def lindexsplit(some_list, list):
     # Checks to see if any extra arguments were passed. If so,
     # prepend the 0th index and append the final index of the
@@ -334,31 +359,26 @@ def lindexsplit(some_list, list):
 
     # For a little more brevity, here is the list comprehension of the following
     # statements:
-    #    return [some_list[start:end] for start, end in zip(args, args[1:])]
+    # return [some_list[start:end] for start, end in zip(args, args[1:])]
     my_list = []
     for start, end in zip(list, list[1:]):
         my_list.append(some_list[start:end])
     return my_list
 
 
-
-
-
-
 if __name__ == "__main__":
 
-    if(len(sys.argv) != 1):
+    if (len(sys.argv) != 1):
         print "Program arguments...";
         print sys.argv
         sys.exit(1);
 
-
     print "main/start:"
 
-    #load file
+    # load file
 
     print "TODO"
-    logFile = load("file/logs_min.txt")
+    logFile = load("file/logs.txt")
 
     numScenarios = 6;
     clusterSize = [4, 8, 16]  # nodes
@@ -399,7 +419,7 @@ if __name__ == "__main__":
     # cpu time --> fast and furious ... RIP
     #
 
-    map_reduce(False, clusterSize[0], testRunsRandom,logFile, "file/out/");
+    map_reduce(False, clusterSize[0], testRunsRandom, logFile, "file/out/");
 
     print "main/end"
 
