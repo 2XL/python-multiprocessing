@@ -21,6 +21,7 @@ import random
 import multiprocessing
 import logging
 
+
 def _run_tests():
     """
     This runs all unitary tests from the py_ecc package.
@@ -34,11 +35,12 @@ def _run_tests():
     print "Running self tests for error correction on files...",
     print py_ecc.file_ecc._test(), ". Done!"
 
+
 def worker(data):
     """
     This worker simply returns the square value.
     """
-    return data*data
+    return data * data
 
 
 def test_pool(size):
@@ -55,14 +57,16 @@ def test_pool(size):
     p.join()
     print ""
 
+
 def worker2(data):
     """
     This worker calculates the square of the integers from the given list.
     """
     work = []
     for v in data:
-        work.append(v*v)
+        work.append(v * v)
     return work
+
 
 def test_pool2(size):
     """
@@ -71,7 +75,7 @@ def test_pool2(size):
     """
     print "### Running test_pool2 with {} processes".format(size)
     p = multiprocessing.Pool(size)
-    data = [range(2*i) for i in range(2*size)]
+    data = [range(2 * i) for i in range(2 * size)]
 
     returnedData = p.map(worker2, data)
     for i in range(len(data)):
@@ -82,13 +86,15 @@ def test_pool2(size):
     p.terminate()
     p.join()
 
+
 def fail_workers(pool, failures):
     """
     This function emulates failing nodes/processes by terminating the
     number of "failures" processes from the "pool".
     """
     if failures > pool._processes:
-        raise Exception("You want to fail {} workers from a total of {}, but you can't!!".format(failures, pool._processes))
+        raise Exception(
+            "You want to fail {} workers from a total of {}, but you can't!!".format(failures, pool._processes))
 
     ids = random.sample(range(pool._processes), failures)
     for i in ids:
@@ -99,12 +105,13 @@ def fail_workers(pool, failures):
     "after failing processes, we need to recover the amount of processes in the pool"
     pool._maintain_pool()
 
+
 def test_pool_failing_workers(size, failures):
     """
     This test emulates failing "failures" workers from a pool of "size" number of workers.
     """
     print "### Running pool test and emulate workers stop randomly"
-    #enable_debug()
+    # enable_debug()
     p = multiprocessing.Pool(size)
     print "Workers => ", p._pool
     print "Workers to make fail:", failures
@@ -114,11 +121,13 @@ def test_pool_failing_workers(size, failures):
     p.terminate()
     p.join()
 
+
 def who_i_am(data):
     """
     The job of this worker is simply tell who it is ;-)
     """
     print "Hi! I'm {} and I'm processing {}!".format(multiprocessing.current_process().name, data)
+
 
 def test_pool_who_i_am(size):
     """
@@ -128,14 +137,15 @@ def test_pool_who_i_am(size):
     """
     print "### Running pool test for process introspection"
     p = multiprocessing.Pool(size)
-    data = range(size*2)
-    datalist = [[i, i+1] for i in range(2*size)]
+    data = range(size * 2)
+    datalist = [[i, i + 1] for i in range(2 * size)]
     "this time, we don't expect any result from the workers."
     p.map(who_i_am, data)
     p.map(who_i_am, datalist)
     print ""
     p.terminate()
     p.join()
+
 
 def test_pool_who_i_am_uniform(size):
     """
@@ -145,21 +155,21 @@ def test_pool_who_i_am_uniform(size):
     print "### Running pool test for uniform distribution of workload"
     p = [multiprocessing.Pool(1) for i in range(size)]
 
-    data = range(size*2)
-    datalist = [[i] for i in range(2*size)]
-    datalist2 = [[i, i+1] for i in range(2*size)]
+    data = range(size * 2)
+    datalist = [[i] for i in range(2 * size)]
+    datalist2 = [[i, i + 1] for i in range(2 * size)]
     "this time, we don't expect any result from the workers."
     "p.map(who_i_am, data)"
     for i, datum in enumerate(data):
-        p[i%size].apply(who_i_am, (datum,))
+        p[i % size].apply(who_i_am, (datum,))
 
     "p.map(who_i_am, datalist)"
     for i, datum in enumerate(datalist):
-        p[i%size].apply(who_i_am, (datum,))
+        p[i % size].apply(who_i_am, (datum,))
 
     "p.map(who_i_am, datalist2)"
     for i, datum in enumerate(datalist2):
-        p[i%size].apply(who_i_am, (datum,))
+        p[i % size].apply(who_i_am, (datum,))
 
     for pool in p:
         pool.terminate()
@@ -174,10 +184,23 @@ def enable_debug():
     logger = multiprocessing.log_to_stderr(logging.DEBUG)
     logger.setLevel(multiprocessing.SUBDEBUG)
 
+
+
+def map_reduce():
+    print "This is map reduce!"
+
+
 if __name__ == "__main__":
+    print "main/start:"
+    """
     test_pool(5)
     test_pool2(10)
     test_pool_failing_workers(5,2)
     test_pool_who_i_am(5)
     test_pool_who_i_am_uniform(5)
+    """
+    map_reduce()
+    print "main/end"
+
+
 
