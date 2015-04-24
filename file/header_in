@@ -1,7 +1,7 @@
+IP  TIMESTAMP   TIMEZONE    DAY MONTH   MONTH#  YEAR    HOUR    MIN SEC TIMEZONE    HTTPMETHOD  PATH    RESPONSE    0???    CLIENTPLATFORM
+
 11.308.46.48	03/Jun/2012:09:25:30 -0500	03	Jun	06	2012	09	25	30	-0500	GET	/product/product3	200	0	-	Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)
 13.640.53.680	03/Jun/2012:09:27:30 -0500	03	Jun	06	2012	09	27	30	-0500	GET	/demo	200	0	-	Jakarta Commons-HttpClient/3.0-rc4
 363.652.18.65	03/Jun/2012:09:29:00 -0500	03	Jun	06	2012	09	29	00	-0500	GET	/demo	200	0	-	Jakarta Commons-HttpClient/3.0-rc4
 363.652.18.65	03/Jun/2012:09:30:01 -0500	03	Jun	06	2012	09	30	01	-0500	GET	/demo	200	0	/demo	Jakarta Commons-HttpClient/3.0-rc4
 363.652.18.65	03/Jun/2012:09:31:01 -0500	03	Jun	06	2012	09	31	01	-0500	GET	/demo	200	0	/demo	Jakarta Commons-HttpClient/3.0-rc4
-
-IP  TIMESTAMP   TIMEZONE    DAY MONTH   MONTH#  YEAR    HOUR    MIN SEC TIMEZONE    HTTPMETHOD  PATH    RESPONSE    0???    CLIENTPLATFORM

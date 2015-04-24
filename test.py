@@ -185,9 +185,11 @@ def enable_debug():
     logger.setLevel(multiprocessing.SUBDEBUG)
 
 
-
-def map_reduce():
+def map_reduce(distributionType, clusterSize, testRun):
     print "This is map reduce!"
+
+    print "TODO"
+
 
 
 if __name__ == "__main__":
@@ -199,6 +201,45 @@ if __name__ == "__main__":
     test_pool_who_i_am(5)
     test_pool_who_i_am_uniform(5)
     """
+    numScenarios = 6;
+    clusterSize = [4, 8, 16]  # nodes
+    testRunsRandom = 100  # nº of test iterations
+    # random distribution --> test_pool_who_i_am
+    testRunsUniform = 100
+    # uniform distribution --> test_pool_who_i_am_uniform
+
+    # hint:
+    # apply each function to Pool.map()
+
+    # apply refactoring to Pool.combiner()
+
+    # apply result to Pool.reduce()
+
+    # evaluate:
+    #
+    # execution time
+    # avg
+    # min
+    # max
+    #
+    # memory usage
+    # avg
+    # min
+    # max
+    #
+    # bandwidth consumption (bytes, worker <-> main)
+    #
+    # avg
+    # min
+    # max
+    #
+    # evaluate extra:
+    # improving the speedup
+    # memory usage --> use the correct attributes from the list --> just timestamp or 2 atributes
+    # bandwidth consumption --> add a combiner
+    # cpu time --> fast and furious ... RIP
+    #
+
     map_reduce()
     print "main/end"
 
