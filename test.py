@@ -133,7 +133,7 @@ def who_i_am(data):
 
 
 
-# this
+# this is random
 def test_pool_who_i_am(size):
     """
     This test shows the way of knowing which process is dealing with
@@ -151,7 +151,7 @@ def test_pool_who_i_am(size):
     p.terminate()
     p.join()
 
-# this
+# this is uniform
 def test_pool_who_i_am_uniform(size):
     """
     This test forces a uniform distribution of workload among processes.
@@ -199,51 +199,57 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     @outputPath: string path to output folder
 
     """
-    print "This is map reduce! "
-
-    print distributionType
-    print clusterSize
-    print testRun
-    print outputPath
+    print "map_reduce/Start! ",
+    print distributionType, clusterSize, testRun, outputPath
 
     # multi... GIL (global interpreter lock)
     # python multiprocessing module
     # python Pool.provides map
     #
-    # [IP      YEAR        MONTH       N#VISITS]
+    # [IP[0]      YEAR[5]        MONTH[4]       N#VISITS]
     line = logData[0]
     print str(line[0])+"\t"+ str(line[5])+ "\t"+str(line[4])+"\t"+"###";
-
-
 
     # build a pool of @clusterSize
     pool = Pool(processes=clusterSize)
 
-
-    # fragment the input log into @clusterSize chunks
+    # Fragment the input log into @clusterSize chunks
     logLines = len(logData)
     logChunkSize = int(math.ceil(logLines / clusterSize))
     print str(logLines) + " into chunks of size: " + str(logChunkSize)
-
     list = [x for x in xrange(0, len(logData), logChunkSize)]
-    list[-1] = logLines
-    print list
-
+    list[-1] = logLines # fix the last offset
     logChunkList = lindexsplit(logData, list)
 
-    print len(logChunkList)
-    items = 0
-    for item in logChunkList:
-        items += len(item)
-        print len(item), item
+    # Fetch map operations
+    map_visitor = pool.map(Map, logChunkList);
 
-    print items
+    # Organize the mapped output
+    combiner_visitor = Partition(map_visitor);
 
-    print "Finish!"
+    # Refector additional step
+
+    # Collapse
+    visitor_frequency = pool.map(Reduce, combiner_visitor.items())
+
+    # Sort in some order
+    frequency_rank = visitor_frequency.sort(tuple_sort)
+
+
+    # Display TOP
+    for pair in frequency_rank[:5]:
+        print pair[0], ": ", pair[1]
+
+
+
+
+    print "map_reduce/Finish!"
 
 
 """
 Map
+num visits x month group by month, unique IP
+1 map visit by ip, {num}
 """
 def Map(L):
     print "Map"
@@ -256,6 +262,7 @@ def Map(L):
 
 """
 Partition
+3 merge and order by
 """
 def Partition(L):
     print "Partition"
@@ -271,12 +278,15 @@ def Partition(L):
 
 """
 Combiner
+2 map visit by month, {ip}
 """
 def Combiner(L):
     print "Combiner"
 
 """
 Reduce
+num visits x month group by month, unique IP
+IP YEAR MONTH num
 """
 def Reduce(Mapping):
     print "Reduce"
