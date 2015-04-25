@@ -230,8 +230,9 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     # python Pool.provides map
     #
     # [IP[0]      YEAR[5]        MONTH[4]       N#VISITS]
+    # INPUT
     line = logData[0]
-    print str(line[0]) + "\t" + str(line[5]) + "\t" + str(line[4]) + "\t" + "###";
+    print str(line[0]) + "\t" + str(line[1]) + "\t" + str(line[2]) + "\t" + "###";
 
     # build a pool of @clusterSize
     pool = multiprocessing.Pool(processes=clusterSize, )
@@ -243,13 +244,20 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     print str(logLines) + " into chunks of size: " + str(logChunkSize)
     list = [x for x in xrange(0, len(logData) + 1, logChunkSize)]
     list[-1] = logLines  # fix the last offset
+    # SPLIT
     logChunkList = lindexsplit(logData, list)
 
     # Fetch map operations
+    # MAP
     map_visitor = pool.map(Map, logChunkList)
     # print map_visitor
 
+
+    # COMBINER
+    # TODO
+
     # Organize the mapped output
+    # SHUTTLE/SORT
     combiner_visitor = Partition(map_visitor)
     #print combiner_visitor
 
@@ -257,8 +265,11 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     #print len(combiner_visitor.items())
     # parse items into sets of 4 ??? o ja ho fa automaticament?
     # Refector additional step
-
+    # REDUCE
     visitor_frequency = pool.map(Reduce, combiner_visitor.items())
+
+    # OUTPUT
+    print "OUTPUT",
     print visitor_frequency
     # Sort in some order
     # frequency_rank = visitor_frequency.sort(tuple_sort)
@@ -289,9 +300,9 @@ def Map(L):
     results = {}  # key value storage
     for line in L:
         try:
-            results[str(line[4])] += 1
+            results[str(line[2])] += 1
         except KeyError:
-            results[str(line[4])] = 1
+            results[str(line[2])] = 1
 
     # print line[4]
     return results
@@ -320,6 +331,7 @@ def Partition(L):
 """
 Combiner
 2 map visit by month, {ip}
+# http://moodle.urv.cat/moodle/pluginfile.php/1942405/mod_resource/content/1/ADS15%20-%20MapReduce%20Programming.pdf
 """
 
 
@@ -328,9 +340,9 @@ def Combiner(L):
     results = {}  # key value storage
     for line in L:
         try:
-            results[str(line[4])] += 1
+            results[str(line[2])] += 1
         except KeyError:
-            results[str(line[4])] = 1
+            results[str(line[2])] = 1
 
             # print line[4]
     return results
@@ -382,7 +394,7 @@ def load(path):
     f = open(path, "r")
     for line in f:
         row = re.split(r'\t+', line.rstrip('\t'))
-        file_rows.append(row)
+        file_rows.append([row[0],row[5],row[4]])
     # add try catch handle error???
     # pdb.set_trace()
     print "Heap at the end of the function\n", hp.heap()
