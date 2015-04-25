@@ -16,6 +16,6 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
-__all__ = ['py_ecc']
-
+__all__ = ['py_ecc', 'py_performance']
 import py_ecc
+import py_performance

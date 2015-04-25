@@ -17,12 +17,34 @@
 """
 import sys
 import re
+import py_performance
+import line_profiler
+import memory_profiler
+import pdb
 import py_ecc
 import random
 import multiprocessing
-from multiprocessing import Pool
+
 import logging
 import math
+
+import time
+from functools import wraps
+from guppy import hpy
+
+
+def fn_timer(function):
+    @wraps(function)
+    def function_timer(*args, **kwargs):
+        t0 = time.time()
+        result = function(*args, **kwargs)
+        t1 = time.time()
+        print ("Total time running %s: %s seconds" %
+               (function.func_name, str(t1 - t0))
+        )
+        return result
+
+    return function_timer
 
 
 def _run_tests():
@@ -190,6 +212,7 @@ def enable_debug():
     logger.setLevel(multiprocessing.SUBDEBUG)
 
 
+@fn_timer
 def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     """
     @distributionType: boolean kind of distribution
@@ -211,7 +234,7 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     print str(line[0]) + "\t" + str(line[5]) + "\t" + str(line[4]) + "\t" + "###";
 
     # build a pool of @clusterSize
-    pool = Pool(processes=clusterSize, )
+    pool = multiprocessing.Pool(processes=clusterSize, )
 
     # Fragment the input log into @clusterSize chunks
     logLines = len(logData)
@@ -224,14 +247,14 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
 
     # Fetch map operations
     map_visitor = pool.map(Map, logChunkList)
-    print map_visitor
+    # print map_visitor
 
     # Organize the mapped output
     combiner_visitor = Partition(map_visitor)
-    print combiner_visitor
+    #print combiner_visitor
 
-    print combiner_visitor.items()
-    print len(combiner_visitor.items())
+    #print combiner_visitor.items()
+    #print len(combiner_visitor.items())
     # parse items into sets of 4 ??? o ja ho fa automaticament?
     # Refector additional step
 
@@ -246,7 +269,7 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     #    print pair[0], ": ", pair[1]
 
 
-
+    # queda afegir els terminates & joins
 
     print "map_reduce/Finish!"
 
@@ -259,10 +282,11 @@ print str(ip[0])+"\t"+ str(year[5])+ "\t"+str(month[4])+"\t"+"###";
 """
 
 
+@fn_timer
 def Map(L):
-    print "Map:", multiprocessing.current_process().name, "\t",
-    print len(L)
-    results = {} # key value storage
+    # print "Map:", multiprocessing.current_process().name, "\t",
+    #print len(L)
+    results = {}  # key value storage
     for line in L:
         try:
             results[str(line[4])] += 1
@@ -279,8 +303,9 @@ Partition
 """
 
 
+@fn_timer
 def Partition(L):
-    print "Partition"
+    # print "Partition"
     tf = {}
     for sublist in L:
         for p in sublist:
@@ -298,10 +323,17 @@ Combiner
 """
 
 
+@fn_timer
 def Combiner(L):
-    print "Combiner"
+    results = {}  # key value storage
+    for line in L:
+        try:
+            results[str(line[4])] += 1
+        except KeyError:
+            results[str(line[4])] = 1
 
-
+            # print line[4]
+    return results
 """
 Reduce
 num visits x month group by month, unique IP
@@ -309,18 +341,42 @@ IP YEAR MONTH num
 """
 
 
+@fn_timer
 def Reduce(Mapping):
-    print "Reduce"
+    # print "Reduce"
     return Mapping[0], sum(pair for pair in Mapping[1])
 
 
 """
+
 Load the contents the file at the given path into a big string and return it as a list of lists
+
+--
+>>cpu time
+pip install line_profiler
+>kernprof.py -l -v test.py
+pip install -U memory_profiler
+>>memory usage
+>python -m memory_profiler test.py
+pip install psutil
+>>memory leak
+>pip install objgraph
+pdb.set_trace()
+debuggnig
+>>memory usage | type
+>pip install guppy
+
+
+@profile
+gr8 tool to seek bottleneck, but got conflict with Pool
 """
 
 
+@fn_timer
 def load(path):
     print "load/" + path
+    hp = hpy()
+    print "Heap at the beginning of the function\n", hp.heap()
     file_rows = []
     row = []
     f = open(path, "r")
@@ -328,6 +384,8 @@ def load(path):
         row = re.split(r'\t+', line.rstrip('\t'))
         file_rows.append(row)
     # add try catch handle error???
+    # pdb.set_trace()
+    print "Heap at the end of the function\n", hp.heap()
     return file_rows
 
 
@@ -336,6 +394,7 @@ Magic tuple sorting by ...
 """
 
 
+@fn_timer
 def tuple_sort(a, b):
     if a[1] < b[1]:
         return 1
@@ -350,6 +409,7 @@ Partition the loglist
 """
 
 
+@fn_timer
 def lindexsplit(some_list, list):
     # Checks to see if any extra arguments were passed. If so,
     # prepend the 0th index and append the final index of the
@@ -378,7 +438,9 @@ if __name__ == "__main__":
     # load file
 
     print "TODO"
+    # with py_performance.timer.Timer() as t:
     logFile = load("file/logs.txt")
+    #print "=> elapsed loadFile: %s s" %t.secs
 
     numScenarios = 6;
     clusterSize = [4, 8, 16]  # nodes
@@ -418,9 +480,15 @@ if __name__ == "__main__":
     # bandwidth consumption --> add a combiner
     # cpu time --> fast and furious ... RIP
     #
+    # 1 cpu time
+    # 2 bootleneck, initial file reading...
+    # 3 memory usage
+    # 4 memory leak ?
+    #
 
-    map_reduce(False, clusterSize[0], testRunsRandom, logFile, "file/out/");
-
+    #with py_performance.timer.Timer() as t:
+    map_reduce(False, clusterSize[2], testRunsRandom, logFile, "file/out/");
+    #print "=> elapsed map_reduce: %s s" %t.secs
     print "main/end"
 
 
