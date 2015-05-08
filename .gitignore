@@ -1,3 +1,7 @@
 # omit recursively *.lut.* and *.pyc files.
 **/*.lut.*
 **/*.pyc
+file/*
+test.py.lprof
+py_performance/*
+
