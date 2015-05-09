@@ -241,6 +241,7 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     logLines = len(logData)
     partitionLength = clusterSize;
     logChunkSize = int(math.ceil(logLines / partitionLength))
+
     print str(logLines) + " into chunks of size: " + str(logChunkSize)
     list = [x for x in xrange(0, len(logData) + 1, logChunkSize)]
     list[-1] = logLines  # fix the last offset
@@ -252,6 +253,7 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     map_visitor = pool.map(Map, logChunkList)
     # print map_visitor
 
+    print map_visitor
 
     # COMBINER
     # TODO
@@ -259,7 +261,7 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     # Organize the mapped output
     # SHUTTLE/SORT
     combiner_visitor = Partition(map_visitor)
-    #print combiner_visitor
+    print combiner_visitor
 
     #print combiner_visitor.items()
     #print len(combiner_visitor.items())
@@ -299,10 +301,12 @@ def Map(L):
     #print len(L)
     results = {}  # key value storage
     for line in L:
+        key = str(line[0] +":" + line[1] +":" + line[2]);
         try:
-            results[str(line[2])] += 1
+
+            results[key] += 1
         except KeyError:
-            results[str(line[2])] = 1
+            results[key] = 1
 
     # print line[4]
     return results
@@ -451,7 +455,7 @@ if __name__ == "__main__":
 
     print "TODO"
     # with py_performance.timer.Timer() as t:
-    logFile = load("file/logs.txt")
+    logFile = load("file/logs_min.txt")
     #print "=> elapsed loadFile: %s s" %t.secs
 
     numScenarios = 6;
