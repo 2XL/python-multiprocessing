@@ -41,7 +41,7 @@ def fn_timer(function):
         t1 = time.time()
         print ("Total time running %s: %s seconds" %
                (function.func_name, str(t1 - t0))
-        )
+        );
         return result
 
     return function_timer
@@ -250,10 +250,12 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
 
     # Fetch map operations
     # MAP
+    # print logChunkList
+
     map_visitor = pool.map(Map, logChunkList)
     # print map_visitor
 
-    print map_visitor
+    # print map_visitor
 
     # COMBINER
     # TODO
@@ -261,7 +263,7 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     # Organize the mapped output
     # SHUTTLE/SORT
     combiner_visitor = Partition(map_visitor)
-    print combiner_visitor
+    # print combiner_visitor
 
     #print combiner_visitor.items()
     #print len(combiner_visitor.items())
@@ -272,14 +274,18 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
 
     # OUTPUT
     print "OUTPUT",
-    print visitor_frequency
+    # print visitor_frequency
     # Sort in some order
-    # frequency_rank = visitor_frequency.sort(tuple_sort)
+
+    print "SORT:..."
+    visitor_frequency.sort(tuple_sort)
 
 
     # Display TOP
-    #for pair in frequency_rank[:5]:
-    #    print pair[0], ": ", pair[1]
+    print "TOP RANK"
+    # print visitor_frequency
+    for pair in visitor_frequency[:10]:
+        print pair[0], ": ", pair[1]
 
 
     # queda afegir els terminates & joins
@@ -295,7 +301,7 @@ print str(ip[0])+"\t"+ str(year[5])+ "\t"+str(month[4])+"\t"+"###";
 """
 
 
-@fn_timer
+# @fn_timer
 def Map(L):
     # print "Map:", multiprocessing.current_process().name, "\t",
     #print len(L)
@@ -303,7 +309,6 @@ def Map(L):
     for line in L:
         key = str(line[0] +":" + line[1] +":" + line[2]);
         try:
-
             results[key] += 1
         except KeyError:
             results[key] = 1
@@ -318,7 +323,7 @@ Partition
 """
 
 
-@fn_timer
+# @fn_timer
 def Partition(L):
     # print "Partition"
     tf = {}
@@ -357,7 +362,7 @@ IP YEAR MONTH num
 """
 
 
-@fn_timer
+# @fn_timer
 def Reduce(Mapping):
     # print "Reduce"
     return Mapping[0], sum(pair for pair in Mapping[1])
@@ -388,7 +393,7 @@ gr8 tool to seek bottleneck, but got conflict with Pool
 """
 
 
-@fn_timer
+# @fn_timer
 def load(path):
     print "load/" + path
     hp = hpy()
@@ -410,14 +415,14 @@ Magic tuple sorting by ...
 """
 
 
-@fn_timer
+# @fn_timer
 def tuple_sort(a, b):
     if a[1] < b[1]:
         return 1
     elif a[1] > b[1]:
         return -1
     else:
-        return cmp(a[0], b[0])
+        return cmp(a[1], b[1])
 
 
 """
@@ -455,7 +460,7 @@ if __name__ == "__main__":
 
     print "TODO"
     # with py_performance.timer.Timer() as t:
-    logFile = load("file/logs_min.txt")
+    logFile = load("file/logs.txt")
     #print "=> elapsed loadFile: %s s" %t.secs
 
     numScenarios = 6;
@@ -503,7 +508,10 @@ if __name__ == "__main__":
     #
 
     #with py_performance.timer.Timer() as t:
-    map_reduce(False, clusterSize[2], testRunsRandom, logFile, "file/out/");
+    for x in range(0, len(clusterSize)):
+        print ">>>>>>>>>>>>>>> START", clusterSize[x]
+        map_reduce(False, clusterSize[x], testRunsRandom, logFile, "file/out/");
+        print ">>>>>>>>>>>>>>> END", clusterSize[x]
     #print "=> elapsed map_reduce: %s s" %t.secs
     print "main/end"
 
