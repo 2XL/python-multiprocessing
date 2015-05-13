@@ -19,7 +19,7 @@ import sys
 import re
 import py_performance
 import line_profiler
-import memory_profiler
+from memory_profiler import profile
 import pdb
 import py_ecc
 import random
@@ -32,8 +32,12 @@ import time
 from functools import wraps
 from guppy import hpy
 
-shuttleSort = {}
 
+
+
+totalTimeElapsed = 0
+minTime = sys.float_info.max
+maxTime = 0
 
 def fn_timer(function):
     @wraps(function)
@@ -41,9 +45,18 @@ def fn_timer(function):
         t0 = time.time()
         result = function(*args, **kwargs)
         t1 = time.time()
-        print ("Total time running %s: %s seconds" %
-               (function.func_name, str(t1 - t0))
-        );
+        # print ("Total time running %s: %s seconds" %
+        #        (function.func_name, str(t1 - t0))
+        # );
+        timeElapsed = t1 - t0
+        global totalTimeElapsed
+        global minTime
+        global maxTime
+        totalTimeElapsed = totalTimeElapsed + timeElapsed
+        if timeElapsed > maxTime:
+            maxTime = timeElapsed
+        if timeElapsed < minTime:
+            minTime = timeElapsed
         return result
 
     return function_timer
@@ -214,6 +227,8 @@ def enable_debug():
     logger.setLevel(multiprocessing.SUBDEBUG)
 
 
+@fn_timer
+@profile
 def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     """
     @distributionType: boolean kind of distribution
@@ -223,8 +238,8 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     @outputPath: string path to output folder
 
     """
-    print "map_reduce/Start! ",
-    print distributionType, clusterSize, testRun, outputPath
+    # print "map_reduce/Start! ",
+    # print distributionType, clusterSize, testRun, outputPath
 
     # multi... GIL (global interpreter lock)
     # python multiprocessing module
@@ -233,7 +248,7 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     # [IP[0]      YEAR[5]        MONTH[4]       N#VISITS]
     # INPUT
     line = logData[0]
-    print str(line[0]) + "\t" + str(line[1]) + "\t" + str(line[2]) + "\t" + "###";
+    # print str(line[0]) + "\t" + str(line[1]) + "\t" + str(line[2]) + "\t" + "###";
 
     # build a pool of @clusterSize
     pool = multiprocessing.Pool(processes=clusterSize, )
@@ -243,7 +258,7 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     partitionLength = clusterSize;
     logChunkSize = int(math.ceil(logLines / partitionLength))
 
-    print str(logLines) + " into chunks of size: " + str(logChunkSize)
+    # print str(logLines) + " into chunks of size: " + str(logChunkSize)
     list = [x for x in xrange(0, len(logData) + 1, logChunkSize)]
     list[-1] = logLines  # fix the last offset
     # SPLIT
@@ -252,55 +267,18 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     # Fetch map operations
     # MAP
     # print logChunkList
-    print "INPUT: ------>\n"
-    print logChunkList
 
     map_visitor = pool.map(Map, logChunkList)
     # print map_visitor
 
     # print map_visitor
 
+    # COMBINER
+    # TODO
+
     # Organize the mapped output
     # SHUTTLE/SORT
-
-    print "" \
-          "\n" \
-          "\n" \
-          "\nMAP--->" \
-          "\n"
-    print map_visitor
-
-    map_combiner = pool.map(Combiner, map_visitor)
-
-
-
-    print "" \
-          "\n" \
-          "\n" \
-          "\nCOMBINE--->" \
-          "\n"
-
-    print map_combiner
-
-
-
-    print "" \
-          "\n" \
-          "\n" \
-          "\nShuttle/Sort--->" \
-          "\n"
-    global shuttleSort
-    shuttleSort = 1
-    shuttle_sort = pool.map(Partition, map_combiner)
-
-    print "MAGGIC SORT!!!"
-    print shuttle_sort
-    print "GLOBAL MAGIC SORT!!!"
-    print shuttleSort
-
-    '''
-
-
+    combiner_visitor = Partition(map_visitor)
     # print combiner_visitor
 
     #print combiner_visitor.items()
@@ -309,34 +287,66 @@ def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
     # Refector additional step
     # REDUCE
     visitor_frequency = pool.map(Reduce, combiner_visitor.items())
-    print "" \
-          "\n" \
-          "\n" \
-          "\nREDUCE--->" \
-          "\n"
+
     # OUTPUT
-
-
-
-
-    print "OUTPUT",
+    # print "OUTPUT",
     # print visitor_frequency
     # Sort in some order
 
-    print "SORT:..."
+    # print "SORT:..."
     visitor_frequency.sort(tuple_sort)
 
 
     # Display TOP
-    print "TOP RANK"
+    # print "TOP RANK"
     # print visitor_frequency
-    for pair in visitor_frequency[:10]:
-        print pair[0], ": ", pair[1]
+    # for pair in visitor_frequency[:10]:
+        # print pair[0], ": ", pair[1]
 
 
     # queda afegir els terminates & joins
-    '''
-    print "map_reduce/Finish!"
+
+    # print "map_reduce/Finish!"
+
+# @fn_timer
+def map_reduce_uniform(distributionType, clusterSize, testRun, logData, outputPath):
+    print "map_reduce/Start! ",
+    print distributionType, clusterSize, testRun, outputPath
+
+    line = logData[0]
+    print str(line[0]) + "\t" + str(line[1]) + "\t" + str(line[2]) + "\t" + "###"
+
+    # Fragment the input log into @clusterSize chunks
+    logLines = len(logData)
+    partitionLength = clusterSize;
+    logChunkSize = int(math.ceil(logLines / partitionLength))
+    print str(logLines) + " into chunks of size: " + str(logChunkSize)
+    list = [x for x in xrange(0, len(logData) + 1, logChunkSize)]
+    list[-1] = logLines  # fix the last offset
+    # SPLIT
+    logChunkList = lindexsplit(logData, list)
+
+    p = [multiprocessing.Pool(1) for i in range(clusterSize)]
+
+    #     map
+
+    mapped = {}
+    for i, data in enumerate(logChunkList):
+        print i,data
+        mapped[i] = p[i % clusterSize].apply(Map, [data])
+
+    # print mapped
+    # combined = {}
+    # combined = Partition(mapped)
+
+    # for i, data in enumerate(logChunkList):
+    #     p[i % clusterSize].apply(Map, (data,))
+#     combine
+#     reduce
+
+    for pool in p:
+        pool.terminate()
+        pool.join()
 
 
 """
@@ -347,33 +357,20 @@ print str(ip[0])+"\t"+ str(year[5])+ "\t"+str(month[4])+"\t"+"###";
 """
 
 
+# @fn_timer
 def Map(L):
     # print "Map:", multiprocessing.current_process().name, "\t",
     #print len(L)
-    results = []  # key value storage
+    results = {}  # key value storage
     for line in L:
         key = str(line[0] +":" + line[1] +":" + line[2]);
-        results.append({key: 1})
+        try:
+            results[key] += 1
+        except KeyError:
+            results[key] = 1
 
     # print line[4]
     return results
-
-"""
-Combiner
-2 map visit by month, {ip}
-# http://moodle.urv.cat/moodle/pluginfile.php/1942405/mod_resource/content/1/ADS15%20-%20MapReduce%20Programming.pdf
-"""
-
-
-def Combiner(L):
-    shuttleSort  # key value storage
-    for line in L:
-        key = line.keys()[0]
-        try:
-            shuttleSort[key] += line[key]
-        except KeyError:
-            shuttleSort[key] = line[key]
-    return shuttleSort
 
 
 """
@@ -382,18 +379,38 @@ Partition
 """
 
 
+# @fn_timer
 def Partition(L):
     # print "Partition"
+    tf = {}
+    for sublist in L:
+        for p in sublist:
+            # Append the tuple to the list in the map
+            try:
+                tf[p].append(sublist[p])
+            except KeyError:
+                tf[p] = [sublist[p]]
+    return tf
 
-    global shuttleSort
 
+"""
+Combiner
+2 map visit by month, {ip}
+# http://moodle.urv.cat/moodle/pluginfile.php/1942405/mod_resource/content/1/ADS15%20-%20MapReduce%20Programming.pdf
+"""
+
+
+# @fn_timer
+def Combiner(L):
+    results = {}  # key value storage
     for line in L:
-        print shuttleSort
-        shuttleSort[line] = [L[line]]
+        try:
+            results[str(line[2])] += 1
+        except KeyError:
+            results[str(line[2])] = 1
 
-
-
-
+            # print line[4]
+    return results
 """
 Reduce
 num visits x month group by month, unique IP
@@ -401,6 +418,7 @@ IP YEAR MONTH num
 """
 
 
+# @fn_timer
 def Reduce(Mapping):
     # print "Reduce"
     return Mapping[0], sum(pair for pair in Mapping[1])
@@ -431,10 +449,11 @@ gr8 tool to seek bottleneck, but got conflict with Pool
 """
 
 
+@fn_timer
 def load(path):
     print "load/" + path
-    #hp = hpy()
-    #print "Heap at the beginning of the function\n", hp.heap()
+    hp = hpy()
+    # print "Heap at the beginning of the function\n", hp.heap()
     file_rows = []
     row = []
     f = open(path, "r")
@@ -443,7 +462,7 @@ def load(path):
         file_rows.append([row[0],row[5],row[4]])
     # add try catch handle error???
     # pdb.set_trace()
-    #print "Heap at the end of the function\n", hp.heap()
+    # print "Heap at the end of the function\n", hp.heap()
     return file_rows
 
 
@@ -452,6 +471,7 @@ Magic tuple sorting by ...
 """
 
 
+# @fn_timer
 def tuple_sort(a, b):
     if a[1] < b[1]:
         return 1
@@ -466,6 +486,7 @@ Partition the loglist
 """
 
 
+# @fn_timer
 def lindexsplit(some_list, list):
     # Checks to see if any extra arguments were passed. If so,
     # prepend the 0th index and append the final index of the
@@ -493,7 +514,7 @@ if __name__ == "__main__":
 
     # load file
 
-    print "TODO"
+    # print "TODO"
     # with py_performance.timer.Timer() as t:
     logFile = load("file/logs_min.txt")
     #print "=> elapsed loadFile: %s s" %t.secs
@@ -542,13 +563,27 @@ if __name__ == "__main__":
     # 4 memory leak ?
     #
 
+    numberOfRuns = 3
+    x = 0
     #with py_performance.timer.Timer() as t:
-    #for x in range(0, len(clusterSize)):
-     #   print ">>>>>>>>>>>>>>> START", clusterSize[x]
-    map_reduce(False, clusterSize[0], testRunsRandom, logFile, "file/out/");
-      #  print ">>>>>>>>>>>>>>> END", clusterSize[x]
+    # for x in range(0, len(clusterSize)):
     #print "=> elapsed map_reduce: %s s" %t.secs
+    print ">>>>>>>>>>>>>>> START", clusterSize[x]
+    # for y in range (0, numberOfRuns):
+    map_reduce(False, clusterSize[x], testRunsRandom, logFile, "file/out/");
+        # map_reduce_uniform(False, clusterSize[x], testRunsRandom, logFile, "file/out/");
+    print "Cluster size: ", clusterSize[x]
+    print "Total time elapsed: ", totalTimeElapsed
+    print "Average time elapsed: ", totalTimeElapsed / numberOfRuns
+    print "Min time elapsed: ", minTime
+    print "Max time elapsed: ", maxTime
+    print ">>>>>>>>>>>>>>> END", clusterSize[x]
+    # totalTimeElapsed = 0
+    # minTime = sys.float_info.max
+    # maxTime = 0
+
+
     print "main/end"
 
-    print shuttleSort
+
 
