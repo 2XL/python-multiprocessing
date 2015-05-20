@@ -1,4 +1,4 @@
 
 
 class Milan(object):
-    variable = "ASDF";
+    variable = "External Variables";
