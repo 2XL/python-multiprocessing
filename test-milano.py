@@ -34,6 +34,7 @@ import time
 from functools import wraps
 from guppy import hpy
 
+from py_performance import milan as m
 
 
 g_totalTimeElapsed = 0
@@ -409,7 +410,6 @@ def Map(L):
     # print "Map: ", [sys.getsizeof(L), sys.getsizeof(results)]
     return results, [multiprocessing.current_process().name, memory_usage(-1, interval=.0001, timeout=.0001).pop()], [sys.getsizeof(L), sys.getsizeof(results)]
 
-
 """
 Partition
 3 merge and order by
@@ -550,14 +550,14 @@ if __name__ == "__main__":
         sys.exit(1);
 
     print "main/start:"
-
+    print m.Milan.variable
 
 
     # load file
 
     # print "TODO"
     # with py_performance.timer.Timer() as t:
-    logFile = load("file/logs_min.txt")
+    logFile = load("file/logs.txt")
     #print "=> elapsed loadFile: %s s" %t.secs
 
     numScenarios = 6;
@@ -666,7 +666,7 @@ if __name__ == "__main__":
         print "Max main process memory used", maxMemory
 
     print "\n:::Bandwidth statistics::::"
-    totalBandwidthIn = 0
+    totalBandwidthIn = 0rot
     totalBandwidthOut = 0
     for id, dataLoad in threadBandwidthIn.items():
         # threadBandwidthIn[id] /= (mapCounter[id] + numberOfRuns) # +number of runs bcs map and reduce together

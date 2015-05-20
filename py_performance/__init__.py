@@ -1,3 +1,4 @@
-__all__ = ['timer']
+__all__ = ['timer','milan']
 
 import timer
+import milan

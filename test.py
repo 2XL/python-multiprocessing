@@ -19,11 +19,16 @@ import sys
 import re
 import py_performance
 import line_profiler
-import memory_profiler
+from memory_profiler import profile
+from memory_profiler import memory_usage
 import pdb
 import py_ecc
 import random
 import multiprocessing
+from multiprocessing import Process, Manager, Array, Value, Lock
+
+lock = Lock() # Global definition of lock
+
 
 import logging
 import math
@@ -32,18 +37,31 @@ import time
 from functools import wraps
 from guppy import hpy
 
-shuttleSort = {}
 
 
+g_totalTimeElapsed = 0
+g_minTime = sys.float_info.max
+g_maxTime = 0
+
+#Decorator function for time profiling
 def fn_timer(function):
     @wraps(function)
     def function_timer(*args, **kwargs):
         t0 = time.time()
         result = function(*args, **kwargs)
         t1 = time.time()
-        print ("Total time running %s: %s seconds" %
-               (function.func_name, str(t1 - t0))
-        );
+        # print ("Total time running %s: %s seconds" %
+        #        (function.func_name, str(t1 - t0))
+        # );
+        timeElapsed = t1 - t0
+        global g_totalTimeElapsed
+        global g_minTime
+        global g_maxTime
+        g_totalTimeElapsed = g_totalTimeElapsed + timeElapsed
+        if timeElapsed > g_maxTime:
+            g_maxTime = timeElapsed
+        if timeElapsed < g_minTime:
+            g_minTime = timeElapsed
         return result
 
     return function_timer
@@ -214,227 +232,229 @@ def enable_debug():
     logger.setLevel(multiprocessing.SUBDEBUG)
 
 
-def map_reduce(distributionType, clusterSize, testRun, logData, outputPath):
+# @profile
+@fn_timer
+def map_reduce(clusterSize, logData, pool, threadLoadMap, threadLoadCombine,
+               threadLoadReduce, threadBandwidthIn, threadBandwidthOut, reduceCounter):
     """
-    @distributionType: boolean kind of distribution
-    @clusterSize: int number of nodes
-    @testRun: int number of runs
-    @logData: list of log
-    @outputPath: string path to output folder
-
+    Runs non-uniform distribution version of the map reduce algorithm
+    :param clusterSize: number of threads
+    :param logData: data to process
+    :param pool: pool of workers
+    :param other: variables used for statistics
+    :return: result
     """
-    print "map_reduce/Start! ",
-    print distributionType, clusterSize, testRun, outputPath
-
-    # multi... GIL (global interpreter lock)
-    # python multiprocessing module
-    # python Pool.provides map
-    #
-    # [IP[0]      YEAR[5]        MONTH[4]       N#VISITS]
-    # INPUT
-    line = logData[0]
-    print str(line[0]) + "\t" + str(line[1]) + "\t" + str(line[2]) + "\t" + "###";
-
-    # build a pool of @clusterSize
-    pool = multiprocessing.Pool(processes=clusterSize, )
 
     # Fragment the input log into @clusterSize chunks
     logLines = len(logData)
     partitionLength = clusterSize;
     logChunkSize = int(math.ceil(logLines / partitionLength))
 
-    print str(logLines) + " into chunks of size: " + str(logChunkSize)
     list = [x for x in xrange(0, len(logData) + 1, logChunkSize)]
     list[-1] = logLines  # fix the last offset
     # SPLIT
     logChunkList = lindexsplit(logData, list)
 
-    # Fetch map operations
     # MAP
-    # print logChunkList
-    print "INPUT: ------>\n"
-    print logChunkList
-
     map_visitor = pool.map(Map, logChunkList)
-    # print map_visitor
+    # Save statistics into variables
+    for x in map_visitor:
+        try:
+            threadLoadMap[x[1][0]] += x[1][1]
+            threadBandwidthIn[x[1][0]] += x[2][0]
+            threadBandwidthOut[x[1][0]] += x[2][1]
+        except KeyError:
+            threadLoadMap[x[1][0]] = x[1][1]
+            # print "k:", x[2][0], "v: ", x[2][1]
+            threadBandwidthIn[x[1][0]] = x[2][0]
+            threadBandwidthOut[x[1][0]] = x[2][1]
 
-    # print map_visitor
+    list = [(x[0]) for x in map_visitor];
 
-    # Organize the mapped output
-    # SHUTTLE/SORT
+    # Setup Shared Memory
+    toShare = Manager()
+    combined = toShare.dict()
 
-    print "" \
-          "\n" \
-          "\n" \
-          "\nMAP--->" \
-          "\n"
-    print map_visitor
+    mapped = ((item, combined) for item in list)
+    # Combine
+    combineStatistics = pool.map(Combiner, mapped)
 
-    map_combiner = pool.map(Combiner, map_visitor)
+    # Save statistics into variables
+    for x in combineStatistics:
+        try:
+            threadLoadCombine[x[0][0]] += x[0][1]
+        except KeyError:
+            threadLoadCombine[x[0][0]] = x[0][1]
+        try:
+            threadBandwidthIn[x[0][0]] += x[1][0]
+            threadBandwidthOut[x[0][0]] += x[1][1]
+        except KeyError:
+            threadBandwidthIn[x[0][0]] = x[1][0]
+            threadBandwidthOut[x[0][0]] = x[1][1]
 
+    # Reduce
+    visitor_frequency = pool.map(Reduce, combined.items())
 
+    # Save statistics into variables
+    for x in visitor_frequency:
+        try:
+            threadLoadReduce[x[2][0]] += x[2][1]
+            reduceCounter[x[2][0]] += 1;
+        except KeyError:
+            threadLoadReduce[x[2][0]] = x[2][1]
+            reduceCounter[x[2][0]] = 1;
+        try:
+            threadBandwidthIn[x[2][0]] += x[3][0]
+            threadBandwidthIn[x[2][0]] += x[3][1]
+        except KeyError:
+            threadBandwidthIn[x[2][0]] = x[3][0]
+            threadBandwidthIn[x[2][0]] = x[3][1]
 
-    print "" \
-          "\n" \
-          "\n" \
-          "\nCOMBINE--->" \
-          "\n"
+    return visitor_frequency
 
-    print map_combiner
-
-
-
-    print "" \
-          "\n" \
-          "\n" \
-          "\nShuttle/Sort--->" \
-          "\n"
-    global shuttleSort
-    shuttleSort = 1
-    shuttle_sort = pool.map(Partition, map_combiner)
-
-    print "MAGGIC SORT!!!"
-    print shuttle_sort
-    print "GLOBAL MAGIC SORT!!!"
-    print shuttleSort
-
-    '''
-
-
-    # print combiner_visitor
-
-    #print combiner_visitor.items()
-    #print len(combiner_visitor.items())
-    # parse items into sets of 4 ??? o ja ho fa automaticament?
-    # Refector additional step
-    # REDUCE
-    visitor_frequency = pool.map(Reduce, combiner_visitor.items())
-    print "" \
-          "\n" \
-          "\n" \
-          "\nREDUCE--->" \
-          "\n"
-    # OUTPUT
-
-
-
-
-    print "OUTPUT",
-    # print visitor_frequency
-    # Sort in some order
-
-    print "SORT:..."
-    visitor_frequency.sort(tuple_sort)
-
-
-    # Display TOP
-    print "TOP RANK"
-    # print visitor_frequency
-    for pair in visitor_frequency[:10]:
-        print pair[0], ": ", pair[1]
-
-
-    # queda afegir els terminates & joins
-    '''
     print "map_reduce/Finish!"
 
+@fn_timer
+def map_reduce_uniform(clusterSize, logData, pool, threadLoadMap, threadLoadCombine,
+                       threadLoadReduce, threadBandwidthIn, threadBandwidthOut, reduceCounter):
+    """
+    Runs uniform distribution version of the map reduce algorithm
+    :param clusterSize: number of threads
+    :param logData: data to process
+    :param pool: pool of workers
+    :param other: variables used for statistics
+    :return: result
+    """
 
-"""
-Map
-num visits x month group by month, unique IP
-1 map visit by ip, {num}
-print str(ip[0])+"\t"+ str(year[5])+ "\t"+str(month[4])+"\t"+"###";
-"""
+    # Fragment the input log into @clusterSize chunks
+    logLines = len(logData)
+    partitionLength = clusterSize;
+    logChunkSize = int(math.ceil(logLines / partitionLength))
+    list = [x for x in xrange(0, len(logData) + 1, logChunkSize)]
+    list[-1] = logLines  # fix the last offset
+    # SPLIT
+    logChunkList = lindexsplit(logData, list)
 
+    map_visitor = []
+    # Map
+    for i, data in enumerate(logChunkList):
+        map_visitor.append(pool[i % clusterSize].apply(Map, [data]))
 
+    # Save statistics into variables
+    for x in map_visitor:
+        try:
+            threadLoadMap[x[1][0]] += x[1][1]
+        except KeyError:
+            threadLoadMap[x[1][0]] = x[1][1]
+        try:
+            threadBandwidthIn[x[1][0]] += x[2][0]
+            threadBandwidthOut[x[1][0]] += x[2][1]
+        except KeyError:
+            threadBandwidthIn[x[1][0]] = x[2][0]
+            threadBandwidthOut[x[1][0]] = x[2][1]
+
+    # Setup Shared Memory
+    toShare = Manager()
+    combined = toShare.dict()
+
+    list = []
+    for x in map_visitor:
+        list.append(x[0])
+
+    precombined = ((item, combined) for item in list)
+    combineStatistics = []
+
+    # Combine
+    for i, data in enumerate(precombined):
+        combineStatistics.append(pool[i % clusterSize].apply(Combiner, [data]))
+
+    # Save statistics into variables
+    for x in combineStatistics:
+        try:
+            threadLoadCombine[x[0][0]] += x[0][1]
+        except KeyError:
+            threadLoadCombine[x[0][0]] = x[0][1]
+        try:
+            threadBandwidthIn[x[0][0]] += x[1][0]
+            threadBandwidthOut[x[0][0]] += x[1][1]
+        except KeyError:
+            threadBandwidthIn[x[0][0]] = x[1][0]
+            threadBandwidthOut[x[0][0]] = x[1][1]
+
+    # REDUCE
+    visitor_frequency = []
+    for i, data in enumerate(combined.items()):
+        visitor_frequency.append(pool[i % clusterSize].apply(Reduce, (data,)))
+
+    for x in visitor_frequency:
+        try:
+            threadLoadReduce[x[2][0]] += x[2][1]
+            reduceCounter[x[2][0]] += 1;
+        except KeyError:
+            threadLoadReduce[x[2][0]] = x[2][1]
+            reduceCounter[x[2][0]] = 1;
+        try:
+            threadBandwidthIn[x[2][0]] += x[3][0]
+            threadBandwidthIn[x[2][0]] += x[3][1]
+        except KeyError:
+            threadBandwidthIn[x[2][0]] = x[3][0]
+            threadBandwidthIn[x[2][0]] = x[3][1]
+    return visitor_frequency
+
+# @fn_timer
+# @profile
 def Map(L):
-    # print "Map:", multiprocessing.current_process().name, "\t",
-    #print len(L)
-    results = []  # key value storage
+    results = {}  # key value storage
     for line in L:
         key = str(line[0] +":" + line[1] +":" + line[2]);
-        results.append({key: 1})
-
-    # print line[4]
-    return results
-
-"""
-Combiner
-2 map visit by month, {ip}
-# http://moodle.urv.cat/moodle/pluginfile.php/1942405/mod_resource/content/1/ADS15%20-%20MapReduce%20Programming.pdf
-"""
-
-
-def Combiner(L):
-    shuttleSort  # key value storage
-    for line in L:
-        key = line.keys()[0]
         try:
-            shuttleSort[key] += line[key]
+            results[key] += 1
         except KeyError:
-            shuttleSort[key] = line[key]
-    return shuttleSort
+            results[key] = 1
+    return results, [multiprocessing.current_process().name, memory_usage(-1, interval=.0001, timeout=.0001).pop()], [sys.getsizeof(L), sys.getsizeof(results)]
 
-
-"""
-Partition
-3 merge and order by
-"""
-
-
+# Not used in the last version
+# @fn_timer
 def Partition(L):
     # print "Partition"
+    tf = {}
+    for sublist in L:
+        for p in sublist:
+            # Append the tuple to the list in the map
+            try:
+                tf[p].append(sublist[p])
+            except KeyError:
+                tf[p] = [sublist[p]]
+    return tf
 
-    global shuttleSort
+# @fn_timer
+def Combiner(L):
+    global lock
+    lock.acquire()
+    data = L[0]
+    sizeOut = 0
+    for line in data:
+        sizeOut += sys.getsizeof(data[line])
+        try:
+            L[1][line].append(data[line])
+        except KeyError:
+            L[1][line] = [data[line]]
+    lock.release()
+    return [multiprocessing.current_process().name, memory_usage(-1, interval=.0001, timeout=.0001).pop()], [sys.getsizeof(L), sizeOut]
 
-    for line in L:
-        print shuttleSort
-        shuttleSort[line] = [L[line]]
 
-
-
-
-"""
-Reduce
-num visits x month group by month, unique IP
-IP YEAR MONTH num
-"""
-
-
+# @fn_timer
 def Reduce(Mapping):
-    # print "Reduce"
-    return Mapping[0], sum(pair for pair in Mapping[1])
+    sumOfMappings = sum(pair for pair in Mapping[1])
+    return Mapping[0], sumOfMappings, [multiprocessing.current_process().name, memory_usage(-1, interval=.0001, timeout=.0001).pop()], \
+           [sys.getsizeof(Mapping), (sys.getsizeof(Mapping[0]) + sys.getsizeof(sumOfMappings))]
 
 
-"""
-
-Load the contents the file at the given path into a big string and return it as a list of lists
-
---
->>cpu time
-pip install line_profiler
->kernprof.py -l -v test.py
-pip install -U memory_profiler
->>memory usage
->python -m memory_profiler test.py
-pip install psutil
->>memory leak
->pip install objgraph
-pdb.set_trace()
-debuggnig
->>memory usage | type
->pip install guppy
-
-
-@profile
-gr8 tool to seek bottleneck, but got conflict with Pool
-"""
-
-
+@fn_timer
 def load(path):
     print "load/" + path
-    #hp = hpy()
-    #print "Heap at the beginning of the function\n", hp.heap()
+    hp = hpy()
+    # print "Heap at the beginning of the function\n", hp.heap()
     file_rows = []
     row = []
     f = open(path, "r")
@@ -443,15 +463,14 @@ def load(path):
         file_rows.append([row[0],row[5],row[4]])
     # add try catch handle error???
     # pdb.set_trace()
-    #print "Heap at the end of the function\n", hp.heap()
+    # print "Heap at the end of the function\n", hp.heap()
     return file_rows
-
 
 """
 Magic tuple sorting by ...
 """
 
-
+# @fn_timer
 def tuple_sort(a, b):
     if a[1] < b[1]:
         return 1
@@ -460,12 +479,10 @@ def tuple_sort(a, b):
     else:
         return cmp(a[1], b[1])
 
-
 """
 Partition the loglist
 """
-
-
+# @fn_timer
 def lindexsplit(some_list, list):
     # Checks to see if any extra arguments were passed. If so,
     # prepend the 0th index and append the final index of the
@@ -482,6 +499,39 @@ def lindexsplit(some_list, list):
     return my_list
 
 
+def parseFrequency(visitor_frequency, filename):
+    """
+    Prints results into a file
+    :param visitor_frequency: data to print into a file
+    :param filename: name of the file
+    :return:
+    """
+    visitor_frequency.sort()
+    f = open(filename, 'w')
+    for x in visitor_frequency:
+        split = re.split('. |:', x[0])
+        f.write(split[0] + " ")
+        f.write(split[1] + " ")
+        f.write(split[2] + " ")
+        f.write(str(x[1]) + "\n")
+    f.close()
+
+def writeVarToFile(data, filename):
+    # Function used for debugging
+    # data.sort()
+    f = open(filename, 'w')
+    for x in data:
+        f.write(str(x) + "\n")
+    f.close()
+
+def writeStrToFile(data, filename):
+    # Function used for debugging
+    # data.sort()
+    f = open(filename, 'w')
+    for x in data:
+        f.write(str(x) + "\n")
+    f.close()
+
 if __name__ == "__main__":
 
     if (len(sys.argv) != 1):
@@ -491,64 +541,119 @@ if __name__ == "__main__":
 
     print "main/start:"
 
-    # load file
-
-    print "TODO"
-    # with py_performance.timer.Timer() as t:
-    logFile = load("file/logs_min.txt")
-    #print "=> elapsed loadFile: %s s" %t.secs
-
-    numScenarios = 6;
+    logFile = load("file/logs.txt")
     clusterSize = [4, 8, 16]  # nodes
-    testRunsRandom = 100  # num of test iterations
-    # random distribution --> test_pool_who_i_am
-    testRunsUniform = 100
-    # uniform distribution --> test_pool_who_i_am_uniform
 
-    # hint:
-    # apply each function to Pool.map()
+    # Properly set global variables
+    g_totalTimeElapsed = 0
+    g_minTime = sys.float_info.max
+    g_maxTime = 0
+    # Test type
+    uniform = 0 # 0 = Non-uniform, 1 = Uniform
+    numberOfRuns = 1
+    clusterSizeIndex = 0 # 0 = 4 threads, 1 = 8 threads, 2 = 16 threads
+    profileMemory = 1 # 1 = profile memory, 2 = do not profile memory
+    # Test statistics
+    totalMemory = 0
+    maxMemory = 0
+    minMemory = sys.float_info.max;
+    threadLoadMap = {}
+    averageThreadLoadMap = 0
+    threadLoadCombine = {}
+    averageThreadLoadCombine = 0
+    threadLoadReduce = {}
+    averageThreadLoadReduce = 0
+    threadBandwidthIn = {}
+    threadBandwidthOut = {}
+    reduceCounter = {}
+    # Pool of threads
+    pool = None
+    # Result
+    visitor_frequency = None
 
-    # apply refactoring to Pool.combiner()
+    # Create threads based on the type of test (uniform, non-uniform)
+    if uniform == 1:
+        pool = [multiprocessing.Pool(1) for i in range(clusterSize[clusterSizeIndex])]
+    else:
+        pool = multiprocessing.Pool(processes=clusterSize[clusterSizeIndex])
+    #     Test started and will be run numberOfRuns times
+    print ">>>>>>>>>>>>>>> START: cluster size: ", clusterSize[clusterSizeIndex], "Uniform: ", uniform
+    for y in range (0, numberOfRuns):
+        print(y),
+        if uniform == 1:
+            visitor_frequency = map_reduce_uniform(clusterSize[clusterSizeIndex], logFile, pool, threadLoadMap,
+                                                   threadLoadCombine, threadLoadReduce, threadBandwidthIn, threadBandwidthOut, reduceCounter);
+            parseFrequency(visitor_frequency, "file/out/log_uniforms.txt")
+        else:
+            visitor_frequency = map_reduce(clusterSize[clusterSizeIndex], logFile,pool, threadLoadMap,
+                                           threadLoadCombine, threadLoadReduce, threadBandwidthIn, threadBandwidthOut, reduceCounter)
+            parseFrequency(visitor_frequency, "file/out/log_non_uniforms.txt")
+        #     Save memory statistics
+        if profileMemory == 1:
+            memoryUsed = memory_usage(-1, interval=.2, timeout=.2).pop()
+            if maxMemory < memoryUsed:
+                maxMemory = memoryUsed
+            if minMemory > memoryUsed:
+                minMemory = memoryUsed
+            totalMemory += memoryUsed
 
-    # apply result to Pool.reduce()
+    print "\n:::Speed statistics::::"
+    print "Cluster size: ", clusterSize[clusterSizeIndex]
+    print "Number of runs: ", numberOfRuns
+    print "Total time elapsed: ", g_totalTimeElapsed
+    print "Average time elapsed: ", g_totalTimeElapsed / numberOfRuns
+    print "Min time elapsed: ", g_minTime
+    print "Max time elapsed: ", g_maxTime
 
-    # evaluate:
-    #
-    # execution time
-    # avg
-    # min
-    # max
-    #
-    # memory usage
-    # avg
-    # min
-    # max
-    #
-    # bandwidth consumption (bytes, worker <-> main)
-    #
-    # avg
-    # min
-    # max
-    #
-    # evaluate extra:
-    # improving the speedup
-    # memory usage --> use the correct attributes from the list --> just timestamp or 2 atributes
-    # bandwidth consumption --> add a combiner
-    # cpu time --> fast and furious ... RIP
-    #
-    # 1 cpu time
-    # 2 bootleneck, initial file reading...
-    # 3 memory usage
-    # 4 memory leak ?
-    #
+    if profileMemory == 1:
+        print "\n:::Memory statistics::::"
+        # Memory in threads
+        print "Data load in the map function."
+        for id, dataLoad in threadLoadMap.items():
+            print "Thread: ", id, " load: ", dataLoad / numberOfRuns
+            averageThreadLoadMap += dataLoad / numberOfRuns
+        print "Average data load in map function: ", averageThreadLoadMap / clusterSize[clusterSizeIndex], "\n"
+        print "Data load in the combine function."
+        for id, dataLoad in threadLoadCombine.items():
+            print "Thread: ", id, " load: ", dataLoad / numberOfRuns
+            averageThreadLoadCombine += dataLoad / numberOfRuns
+        print "Average data load in combine function: ", averageThreadLoadCombine / clusterSize[clusterSizeIndex], "\n"
+        print "Data load in the reduce function."
+        for id, dataLoad in threadLoadReduce.items():
+            threadLoadReduce[id] /= reduceCounter[id]
+            print "Thread: ", id, " load: ", threadLoadReduce[id]
+            averageThreadLoadReduce += threadLoadReduce[id]
+        print "Average data load in reduce function: ", averageThreadLoadReduce / clusterSize[clusterSizeIndex], "\n"
+        # Memory in the main process
+        print "Average main process memory used", totalMemory / numberOfRuns
+        print "Min main process memory used", minMemory
+        print "Max main process memory used", maxMemory
 
-    #with py_performance.timer.Timer() as t:
-    #for x in range(0, len(clusterSize)):
-     #   print ">>>>>>>>>>>>>>> START", clusterSize[x]
-    map_reduce(False, clusterSize[0], testRunsRandom, logFile, "file/out/");
-      #  print ">>>>>>>>>>>>>>> END", clusterSize[x]
-    #print "=> elapsed map_reduce: %s s" %t.secs
+    print "\n:::Bandwidth statistics::::"
+    totalBandwidthIn = 0
+    totalBandwidthOut = 0
+    for id, dataLoad in threadBandwidthIn.items():
+        # threadBandwidthIn[id] /= (mapCounter[id] + numberOfRuns) # +number of runs bcs map and reduce together
+        totalBandwidthIn += threadBandwidthIn[id];
+        # print "Thread: ", id, " in: ", threadBandwidthIn[id]
+    for id, dataLoad in threadBandwidthOut.items():
+        totalBandwidthOut += threadBandwidthOut[id];
+        # threadBandwidthOut[id] /= (mapCounter[id] + numberOfRuns)
+        # print "Thread: ", id, " out: ", threadBandwidthOut[id]
+    print "Total average bandwidth in:out (bytes) ", totalBandwidthIn / numberOfRuns, ":", totalBandwidthOut / numberOfRuns
+
+    print ">>>>>>>>>>>>>>> END", clusterSize[clusterSizeIndex]
+    # totalTimeElapsed = 0
+    # minTime = sys.float_info.max
+    # maxTime = 0
+
+    if uniform == 1:
+        for pool in pool:
+            pool.terminate()
+            pool.join()
+    else:
+        pool.terminate()
+        pool.join()
+
     print "main/end"
-
-    print shuttleSort
 
